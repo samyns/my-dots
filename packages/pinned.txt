@@ -1,0 +1,42 @@
+cd ~/projets/Unit-3
+mkdir -p packages
+
+# Pour les paquets pacman (depuis pacman.txt)
+{
+    echo "# Pinned versions — generated $(date +%Y-%m-%d)"
+    echo "# These exact versions are known to work together."
+    echo "# The installer can use these via the --pinned flag."
+    echo ""
+    while IFS= read -r pkg; do
+        # skip comments and blank lines
+        [[ "$pkg" =~ ^[[:space:]]*# ]] && continue
+        [[ -z "${pkg// }" ]] && continue
+        # try pacman -Qi to get installed version
+        version=$(pacman -Qi "$pkg" 2>/dev/null | awk '/^Version/{print $3}')
+        if [[ -n "$version" ]]; then
+            echo "$pkg=$version"
+        else
+            echo "# $pkg (not installed locally)"
+        fi
+    done < packages/pacman.txt
+} > packages/pinned-pacman.txt
+
+# Pareil pour AUR
+{
+    echo "# Pinned AUR versions — generated $(date +%Y-%m-%d)"
+    echo ""
+    while IFS= read -r pkg; do
+        [[ "$pkg" =~ ^[[:space:]]*# ]] && continue
+        [[ -z "${pkg// }" ]] && continue
+        version=$(pacman -Qi "$pkg" 2>/dev/null | awk '/^Version/{print $3}')
+        if [[ -n "$version" ]]; then
+            echo "$pkg=$version"
+        else
+            echo "# $pkg (not installed locally)"
+        fi
+    done < packages/aur.txt
+} > packages/pinned-aur.txt
+
+# Vérifie le résultat
+cat packages/pinned-pacman.txt
+cat packages/pinned-aur.txt

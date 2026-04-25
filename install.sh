@@ -11,6 +11,24 @@ readonly REPO_BRANCH="${MY_DOTS_BRANCH:-main}"
 readonly CLONE_DIR="${TMPDIR:-/tmp}/Unit-3-install-$$"
 readonly BACKUP_DIR="$HOME/.config-backup-$(date +%Y%m%d-%H%M%S)"
 readonly CONFIG_HOME="${XDG_CONFIG_HOME:-$HOME/.config}"
+# Add support for --pinned flag
+PINNED_MODE=false
+for arg in "$@"; do
+    case "$arg" in
+        --pinned) PINNED_MODE=true ;;
+        --latest) PINNED_MODE=false ;;
+        --help|-h)
+            cat <<EOF
+Usage: install.sh [--pinned|--latest]
+
+  --latest   Install latest versions of all packages (default).
+  --pinned   Install exact versions tested by the maintainer.
+             Use this if --latest broke something on your system.
+EOF
+            exit 0
+            ;;
+    esac
+done
 
 # Folders managed by this installer (touched in $CONFIG_HOME)
 readonly MANAGED_DIRS=(hypr quickshell waybar kitty dunst)
@@ -108,18 +126,60 @@ read_pkg_list() {
 }
 
 install_packages() {
-    local pacman_pkgs aur_pkgs
-    mapfile -t pacman_pkgs < <(read_pkg_list "$CLONE_DIR/packages/pacman.txt")
-    mapfile -t aur_pkgs    < <(read_pkg_list "$CLONE_DIR/packages/aur.txt")
+    local pacman_list="$CLONE_DIR/packages/pacman.txt"
+    local aur_list="$CLONE_DIR/packages/aur.txt"
 
-    if (( ${#pacman_pkgs[@]} > 0 )); then
-        log "Installing ${#pacman_pkgs[@]} pacman packages…"
-        sudo pacman -S --needed --noconfirm "${pacman_pkgs[@]}"
+    if $PINNED_MODE; then
+        local pinned_pacman="$CLONE_DIR/packages/pinned-pacman.txt"
+        local pinned_aur="$CLONE_DIR/packages/pinned-aur.txt"
+        log "Pinned mode: installing exact tested versions from Arch Archive."
+
+        if [[ -f "$pinned_pacman" ]]; then
+            log "Installing pinned pacman packages…"
+            install_pinned_from_archive "$pinned_pacman"
+        fi
+        if $INSTALL_AUR && [[ -f "$pinned_aur" ]]; then
+            warn "AUR packages cannot be reliably pinned — falling back to latest."
+            mapfile -t aur_pkgs < <(grep -vE '^\s*(#|$)' "$aur_list")
+            local helper; helper=$(command -v yay || command -v paru)
+            "$helper" -S --needed --noconfirm "${aur_pkgs[@]}"
+        fi
+    else
+        # Latest mode (default)
+        local pacman_pkgs aur_pkgs
+        mapfile -t pacman_pkgs < <(grep -vE '^\s*(#|$)' "$pacman_list")
+        if (( ${#pacman_pkgs[@]} > 0 )); then
+            log "Installing ${#pacman_pkgs[@]} pacman packages (latest)…"
+            sudo pacman -S --needed --noconfirm "${pacman_pkgs[@]}"
+        fi
+        if $INSTALL_AUR && [[ -f "$aur_list" ]]; then
+            mapfile -t aur_pkgs < <(grep -vE '^\s*(#|$)' "$aur_list")
+            if (( ${#aur_pkgs[@]} > 0 )); then
+                log "Installing ${#aur_pkgs[@]} AUR packages (latest)…"
+                local helper; helper=$(command -v yay || command -v paru)
+                "$helper" -S --needed --noconfirm "${aur_pkgs[@]}"
+            fi
+        fi
     fi
-    if $INSTALL_AUR && (( ${#aur_pkgs[@]} > 0 )); then
-        log "Installing ${#aur_pkgs[@]} AUR packages…"
-        local helper; helper=$(command -v yay || command -v paru)
-        "$helper" -S --needed --noconfirm "${aur_pkgs[@]}"
+}
+
+install_pinned_from_archive() {
+    local pinned_file="$1"
+    local archive_base="https://archive.archlinux.org/packages"
+    local urls=()
+
+    while IFS='=' read -r pkg version; do
+        [[ "$pkg" =~ ^[[:space:]]*# ]] && continue
+        [[ -z "$pkg" || -z "$version" ]] && continue
+        # Archive structure: /packages/<first-letter>/<pkg>/<pkg>-<version>-x86_64.pkg.tar.zst
+        local first="${pkg:0:1}"
+        local url="$archive_base/$first/$pkg/$pkg-$version-x86_64.pkg.tar.zst"
+        urls+=("$url")
+    done < "$pinned_file"
+
+    if (( ${#urls[@]} > 0 )); then
+        # Note: pacman -U will resolve dependencies and install
+        sudo pacman -U --noconfirm "${urls[@]}"
     fi
 }
 
