@@ -288,7 +288,7 @@ OVR
 
 # ─── Wallpapers & Pictures dir ─────────────────────────────────────
 setup_user_dirs() {
-    mkdir -p "$HOME/Pictures/Wallpapers" "$HOME/Screenshots"
+    mkdir -p "$HOME/Pictures/wallpapers" "$HOME/Screenshots"
     if $INSTALL_WALLPAPERS && [[ -d "$CLONE_DIR/assets/wallpapers" ]]; then
         log "Installing default wallpapers…"
         cp -n "$CLONE_DIR/assets/wallpapers/"* "$HOME/Pictures/wallpapers/" 2>/dev/null || true
