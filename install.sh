@@ -291,7 +291,7 @@ setup_user_dirs() {
     mkdir -p "$HOME/Pictures/Wallpapers" "$HOME/Screenshots"
     if $INSTALL_WALLPAPERS && [[ -d "$CLONE_DIR/assets/wallpapers" ]]; then
         log "Installing default wallpapers…"
-        cp -n "$CLONE_DIR/assets/wallpapers/"* "$HOME/Pictures/Wallpapers/" 2>/dev/null || true
+        cp -n "$CLONE_DIR/assets/wallpapers/"* "$HOME/Pictures/wallpapers/" 2>/dev/null || true
     fi
 }
 
