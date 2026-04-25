@@ -92,7 +92,7 @@ collect_choices() {
     echo
     BACKUP_OLD=true;          ask_yn "Backup existing configs to $BACKUP_DIR?" y || BACKUP_OLD=false
     INSTALL_AUR=true;         ask_yn "Install AUR packages (quickshell-git, awww)? Highly recommended." y || INSTALL_AUR=false
-    INSTALL_WALLPAPERS=true;  ask_yn "Install default wallpapers to ~/Pictures/Wallpapers?" y || INSTALL_WALLPAPERS=false
+    INSTALL_WALLPAPERS=true;  ask_yn "Install default wallpapers to ~/Pictures/wallpapers?" y || INSTALL_WALLPAPERS=false
     INSTALL_BASHRC=true;      ask_yn "Install Unit-3 .bashrc (welcome banner + NieR prompt)?" y || INSTALL_BASHRC=false
     ENABLE_SERVICES=true;     ask_yn "Enable system services (NetworkManager, pipewire)?" y || ENABLE_SERVICES=false
     echo
@@ -313,7 +313,7 @@ finalize() {
     echo "    1. Reboot or log out, then log back into Hyprland."
     echo "    2. Customise via ~/.config/hypr/user.conf — never edit hyprland.conf directly."
     echo "    3. Bashrc personal overrides go in ~/.bashrc.local"
-    echo "    4. Wallpapers go in ~/Pictures/Wallpapers/ (use SUPER+P to pick one)."
+    echo "    4. Wallpapers go in ~/Pictures/wallpapers/ (use SUPER+P to pick one)."
     if [[ -d "$BACKUP_DIR" ]]; then
         echo
         echo "  ${C_BOLD}Backup of your old configs:${C_RESET}"
