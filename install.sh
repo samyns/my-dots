@@ -7,11 +7,12 @@ set -euo pipefail
 
 # ─── Configuration ──────────────────────────────────────────────────
 readonly REPO_URL="https://github.com/samyns/Unit-3.git"
-readonly REPO_BRANCH="${MY_DOTS_BRANCH:-main}"
+readonly REPO_BRANCH="${UNIT3_BRANCH:-main}"
 readonly CLONE_DIR="${TMPDIR:-/tmp}/Unit-3-install-$$"
 BACKUP_DIR="$HOME/.config-backup-$(date +%Y%m%d-%H%M%S)"
 readonly BACKUP_DIR
 readonly CONFIG_HOME="${XDG_CONFIG_HOME:-$HOME/.config}"
+
 # Add support for --pinned flag
 PINNED_MODE=false
 for arg in "$@"; do
@@ -92,6 +93,7 @@ collect_choices() {
     BACKUP_OLD=true;          ask_yn "Backup existing configs to $BACKUP_DIR?" y || BACKUP_OLD=false
     INSTALL_AUR=true;         ask_yn "Install AUR packages (quickshell-git, awww)? Highly recommended." y || INSTALL_AUR=false
     INSTALL_WALLPAPERS=true;  ask_yn "Install default wallpapers to ~/Pictures/Wallpapers?" y || INSTALL_WALLPAPERS=false
+    INSTALL_BASHRC=true;      ask_yn "Install Unit-3 .bashrc (welcome banner + NieR prompt)?" y || INSTALL_BASHRC=false
     ENABLE_SERVICES=true;     ask_yn "Enable system services (NetworkManager, pipewire)?" y || ENABLE_SERVICES=false
     echo
 }
@@ -179,7 +181,6 @@ install_pinned_from_archive() {
     done < "$pinned_file"
 
     if (( ${#urls[@]} > 0 )); then
-        # Note: pacman -U will resolve dependencies and install
         sudo pacman -U --noconfirm "${urls[@]}"
     fi
 }
@@ -231,6 +232,60 @@ EOF
     fi
 }
 
+# ─── System files (PAM, etc.) ───────────────────────────────────────
+deploy_system_files() {
+    local pam_src="$CLONE_DIR/config/system/pam.d"
+    if [[ ! -d "$pam_src" ]]; then
+        warn "No system files to install."
+        return
+    fi
+    log "Installing system PAM configurations…"
+    for f in "$pam_src"/*; do
+        [[ -f "$f" ]] || continue
+        local name; name=$(basename "$f")
+        sudo install -D -m 644 "$f" "/etc/pam.d/$name"
+        ok "Installed PAM config: /etc/pam.d/$name"
+    done
+}
+
+# ─── Shell config (.bashrc with welcome banner) ────────────────────
+deploy_shell_config() {
+    $INSTALL_BASHRC || { warn "Skipping .bashrc installation."; return; }
+
+    local bashrc_src="$CLONE_DIR/config/bash/.bashrc"
+    local bashrc_dest="$HOME/.bashrc"
+
+    [[ -f "$bashrc_src" ]] || { warn "No bundled .bashrc found in repo."; return; }
+
+    # Backup existing .bashrc if it's not already a Unit-3 one
+    if [[ -f "$bashrc_dest" ]] && ! grep -q "Unit-3 default .bashrc" "$bashrc_dest"; then
+        if $BACKUP_OLD; then
+            mkdir -p "$BACKUP_DIR"
+            cp "$bashrc_dest" "$BACKUP_DIR/.bashrc"
+            log "Backed up existing ~/.bashrc"
+        fi
+    fi
+
+    log "Installing Unit-3 .bashrc (welcome banner enabled)…"
+    cp "$bashrc_src" "$bashrc_dest"
+
+    # Create empty user override if missing
+    if [[ ! -f "$HOME/.bashrc.local" ]]; then
+        cat > "$HOME/.bashrc.local" <<'OVR'
+# Unit-3 user overrides — never touched by updates.
+# Put your personal aliases, functions, exports here.
+#
+# Examples:
+#   alias ll='ls -la'
+#   export EDITOR=nano
+#   export PATH="$PATH:$HOME/.local/bin"
+OVR
+        ok "Created empty ~/.bashrc.local for your personal overrides."
+    fi
+
+    ok "Bashrc installed."
+}
+
 # ─── Wallpapers & Pictures dir ─────────────────────────────────────
 setup_user_dirs() {
     mkdir -p "$HOME/Pictures/Wallpapers" "$HOME/Screenshots"
@@ -257,7 +312,8 @@ finalize() {
     echo "  ${C_BOLD}Next steps:${C_RESET}"
     echo "    1. Reboot or log out, then log back into Hyprland."
     echo "    2. Customise via ~/.config/hypr/user.conf — never edit hyprland.conf directly."
-    echo "    3. Wallpapers go in ~/Pictures/Wallpapers/ (use SUPER+P to pick one)."
+    echo "    3. Bashrc personal overrides go in ~/.bashrc.local"
+    echo "    4. Wallpapers go in ~/Pictures/Wallpapers/ (use SUPER+P to pick one)."
     if [[ -d "$BACKUP_DIR" ]]; then
         echo
         echo "  ${C_BOLD}Backup of your old configs:${C_RESET}"
@@ -277,6 +333,8 @@ main() {
     clone_repo
     install_packages
     deploy_configs
+    deploy_system_files
+    deploy_shell_config
     setup_user_dirs
     enable_services
     finalize
