@@ -1,14 +1,14 @@
 #!/usr/bin/env bash
 # ═══════════════════════════════════════════════════════════════════
-#   my-dots installer — Hyprland + Quickshell + Waybar rice
-#   Usage: bash <(curl -fsSL https://raw.githubusercontent.com/<TOI>/my-dots/main/install.sh)
+#   Unit-3 installer — Hyprland + Quickshell + Waybar rice
+#   Usage: bash <(curl -fsSL https://raw.githubusercontent.com/samyns/Unit-3/main/install.sh)
 # ═══════════════════════════════════════════════════════════════════
 set -euo pipefail
 
 # ─── Configuration ──────────────────────────────────────────────────
-readonly REPO_URL="https://github.com/samyns/my-dots.git"
+readonly REPO_URL="https://github.com/samyns/Unit-3.git"
 readonly REPO_BRANCH="${MY_DOTS_BRANCH:-main}"
-readonly CLONE_DIR="${TMPDIR:-/tmp}/my-dots-install-$$"
+readonly CLONE_DIR="${TMPDIR:-/tmp}/Unit-3-install-$$"
 readonly BACKUP_DIR="$HOME/.config-backup-$(date +%Y%m%d-%H%M%S)"
 readonly CONFIG_HOME="${XDG_CONFIG_HOME:-$HOME/.config}"
 
@@ -96,7 +96,7 @@ bootstrap_aur_helper() {
 
 # ─── Clone ──────────────────────────────────────────────────────────
 clone_repo() {
-    log "Cloning my-dots ($REPO_BRANCH)…"
+    log "Cloning Unit-3 ($REPO_BRANCH)…"
     git clone --depth=1 --branch "$REPO_BRANCH" "$REPO_URL" "$CLONE_DIR"
 }
 
@@ -204,7 +204,7 @@ finalize() {
     fi
     echo
     echo "  ${C_BOLD}Docs & support:${C_RESET}"
-    echo "    https://github.com/<TOI>/my-dots#readme"
+    echo "    https://github.com/samyns/Unit-3#readme"
     echo
 }
 

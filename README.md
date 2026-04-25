@@ -1,11 +1,11 @@
-# my-dots
+#Unit-3
 
 Hyprland + Quickshell + Waybar rice for Arch Linux, with a NieR:Automata aesthetic.
 
 ## Quick install
 
 ```bash
-bash <(curl -fsSL https://raw.githubusercontent.com/<TOI>/my-dots/main/install.sh)
+bash <(curl -fsSL https://raw.githubusercontent.com/samyns/Unit-3/main/install.sh)
 ```
 
 ## What's included
