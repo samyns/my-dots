@@ -14,7 +14,7 @@ bash <(curl -fsSL https://raw.githubusercontent.com/samyns/Unit-3/main/install.s
 
 ## What's included
 
-- **Window manager**: Hyprland with custom keybinds (AZERTY layout)
+- **Window manager**: Hyprland with custom keybinds (QWERTY layout)
 - **Shell/widgets**: Quickshell with custom QML widgets (menu, lockscreen, wallpaper picker, notifications, player)
 - **Bar**: Waybar
 - **Terminal**: Kitty
@@ -41,7 +41,7 @@ bind = SUPER, B, exec, firefox
 | `SUPER + Q` | Close window |
 | `SUPER + F` | Fullscreen |
 | `ALT + Tab` | Cycle windows |
-| `ALT + a/z/e/...` | Switch workspace (AZERTY) |
+| `ALT + 1/2/3/...` | Switch workspace (QWERTY) |
 | `Print` | Screenshot |
 | `ALT SHIFT + S` | Region screenshot |
 
