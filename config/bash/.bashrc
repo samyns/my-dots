@@ -25,11 +25,8 @@ _nier_prompt_cmd() {
 PROMPT_COMMAND='_nier_prompt_cmd'
 
 # ─── Welcome banner (only on first interactive shell) ──────────────
-if [[ -z "$NIER_DONE" ]] && [[ -x ~/.config/quickshell/nier-welcome.sh ]] && command -v figlet >/dev/null; then
-    NIER_DONE=1
-    export NIER_DONE
+if [[ -x ~/.config/quickshell/nier-welcome.sh ]] && command -v figlet >/dev/null; then
     ~/.config/quickshell/nier-welcome.sh
 fi
-
 # ─── User-specific overrides ───────────────────────────────────────
 [ -f ~/.bashrc.local ] && . ~/.bashrc.local
