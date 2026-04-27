@@ -50,6 +50,8 @@ QtObject {
 
     // ── COMPANIONS ──────────────────────────────────────────────
 
+    readonly property bool companionsEnabled: true  // Afficher les compagnons
+
     // Distance du bord droit en pixels
     readonly property int companionsMarginRight: s(20)
 
