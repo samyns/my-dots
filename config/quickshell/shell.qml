@@ -140,7 +140,7 @@ ShellRoot {
 
     // ── COMPANIONS ──
     Variants {
-        model:Quickshell.screens
+        model:Settings.companionsEnabled ? Quickshell.screens : []
         PanelWindow {
             required property var modelData;screen:modelData
             anchors.bottom:true;anchors.right:true;margins.right:Settings.companionsMarginRight
