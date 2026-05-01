@@ -16,6 +16,7 @@ gtk4-layer-shell
 # ─── Terminal ──────────────────────────────────────────
 figlet
 kitty
+yazi
 
 # ─── Audio ─────────────────────────────────────────────
 pipewire
