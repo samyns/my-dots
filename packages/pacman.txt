@@ -57,6 +57,7 @@ starship
 python-cairo
 python-numpy
 python-pillow
+python-opencv
 
 # ─── XDG ───────────────────────────────────────────────
 xdg-user-dirs

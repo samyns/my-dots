@@ -7,6 +7,9 @@ import Quickshell.Wayland
 ShellRoot {
     id: root
 
+    // ── Fast mode (skip reveal animation, used for lid-switch lock) ──
+    property bool fastMode: Quickshell.env("UNIT3_LOCK_FAST") === "1"
+
     // ── État partagé ──
     property bool   revealing: false   // vidéo reveal en cours
     property bool   frozen:    false   // reveal freezée sur dernière frame
@@ -66,7 +69,12 @@ ShellRoot {
     // Le curseur natif Hyprland est conservé, rien à faire côté lockscreen.
 
     Component.onCompleted: {
-        root.revealing = true
+        if (root.fastMode) {
+            // Skip reveal animation entirely
+            root.frozen = true
+        } else {
+            root.revealing = true
+        }
     }
 
     // ── Screens ──
@@ -85,10 +93,24 @@ ShellRoot {
 
             property bool isPrimary: modelData.name === Quickshell.screens[0].name
 
+            // ── Fast mode background ──
+            // Affiche la dernière frame de wave_reveal.mp4 comme image statique.
+            // Chargement instantané (pas de FFmpeg, pas de codec vidéo).
+            Image {
+                id: fastBg
+                anchors.fill: parent
+                source: root.fastMode ? ("file://" + root.xdgConfigHome + "/quickshell/videos/wave_last_frame.png") : ""
+                visible: root.fastMode && !root.hiding && !root.done
+                fillMode: Image.PreserveAspectCrop
+                asynchronous: false
+                cache: true
+                z: 0
+            }
+
             // ── Reveal ──
             MediaPlayer {
                 id: reveal
-                source: "file://" + root.xdgConfigHome + "/quickshell/videos/wave_reveal.mp4"
+                source: root.fastMode ? "" : ("file://" + root.xdgConfigHome + "/quickshell/videos/wave_reveal.mp4")
                 videoOutput: voReveal
                 audioOutput: null
                 loops: 1
@@ -106,7 +128,7 @@ ShellRoot {
             VideoOutput {
                 id: voReveal
                 anchors.fill: parent
-                visible: !root.done  // toujours visible sauf après hide terminé
+                visible: !root.fastMode && !root.done
             }
 
             // ── Hide ──
@@ -132,7 +154,7 @@ ShellRoot {
             // Fade + fermeture 1s avant la fin de hide
             Timer {
                 id: hideFadeTimer
-                interval: 800   // 0.8s après le début de hide → fade sur les 400ms restantes
+                interval: 800
                 repeat: false
                 onTriggered: hideFadeAnim.start()
             }
@@ -151,13 +173,14 @@ ShellRoot {
             // ── UI Lockscreen ──
             Item {
                 anchors.fill: parent
-                // Toujours présent — opacity gère la visibilité pour les animations
                 visible: !root.done
                 z: 2
 
-                // Fond sombre sur les coins
                 property real uiOp: (root.frozen || root.revealing) ? 1 : 0
-                Behavior on uiOp { NumberAnimation { duration: 400 } }
+                Behavior on uiOp {
+                    enabled: !root.fastMode
+                    NumberAnimation { duration: 400 }
+                }
 
                 // Coins
                 Item {
@@ -212,7 +235,7 @@ ShellRoot {
                     }
                 }
 
-                // Panel central — slide depuis le haut
+                // Panel central — slide depuis le haut (sauf en fast mode)
                 Item {
                     id: panelHost
                     width: 380
@@ -220,9 +243,8 @@ ShellRoot {
                     anchors.horizontalCenter: parent.horizontalCenter
                     anchors.verticalCenter:   parent.verticalCenter
                     z: 6
-                    opacity: 0
+                    opacity: root.fastMode ? 1 : 0
 
-                    // Animation d'entrée
                     SequentialAnimation {
                         id: panelReveal
                         PropertyAction{target:panelHost;property:"anchors.verticalCenterOffset";value:-200}
@@ -241,7 +263,6 @@ ShellRoot {
                         }
                     }
 
-                    // Animation de sortie
                     SequentialAnimation {
                         id: panelHide
                         NumberAnimation{target:wipeScale;property:"yScale";from:0;to:1;duration:210;easing.type:Easing.InQuart}
@@ -251,7 +272,6 @@ ShellRoot {
                         }
                     }
 
-                    // Shake
                     SequentialAnimation { id:shakeAnim
                         NumberAnimation{target:panelHost;property:"anchors.horizontalCenterOffset";from:0;to:-10;duration:55}
                         NumberAnimation{target:panelHost;property:"anchors.horizontalCenterOffset";to:10;duration:75}
@@ -266,11 +286,9 @@ ShellRoot {
                         height: panelCol.implicitHeight + 72
                         border.color:"#463f2e"; border.width:1
 
-                        // Grille fine
                         Repeater { model:20; Rectangle{x:index*20;y:0;width:1;height:panelRect.height;color:Qt.rgba(70/255,63/255,46/255,0.06)} }
                         Repeater { model:Math.ceil(panelRect.height/20); Rectangle{x:0;y:index*20;width:panelRect.width;height:1;color:Qt.rgba(70/255,63/255,46/255,0.06)} }
 
-                        // Scan line
                         Rectangle {
                             x:0;width:parent.width;height:1;z:20
                             gradient:Gradient{ orientation:Gradient.Horizontal
@@ -284,7 +302,6 @@ ShellRoot {
                             }
                         }
 
-                        // Wipe curtain
                         Rectangle {
                             id:wipeCurtain;anchors.fill:parent;color:"#c8b89a";z:50
                             transform:Scale{id:wipeScale;xScale:1;yScale:1;origin.x:0;origin.y:0}
@@ -296,7 +313,6 @@ ShellRoot {
                             anchors{top:parent.top;topMargin:36;horizontalCenter:parent.horizontalCenter}
                             spacing:0
 
-                            // Avatar
                             Item { width:parent.width;height:90
                                 Rectangle{width:76;height:76;border.color:"#463f2e";border.width:1;color:"transparent"
                                     anchors.horizontalCenter:parent.horizontalCenter
@@ -317,7 +333,6 @@ ShellRoot {
                             Rectangle{width:parent.width;height:1;color:Qt.rgba(70/255,63/255,46/255,0.22)}
                             Item{width:1;height:22}
 
-                            // Input
                             Item { width:parent.width;height:40
                                 Rectangle{anchors.fill:parent;color:"transparent"
                                     border.color:inputScope.activeFocus?"#463f2e":Qt.rgba(70/255,63/255,46/255,0.22);border.width:1
@@ -344,19 +359,16 @@ ShellRoot {
                             }
                             Item{width:1;height:8}
 
-                            // Dots
                             Row{anchors.horizontalCenter:parent.horizontalCenter;spacing:6
                                 Repeater{model:6;Rectangle{width:6;height:6;color:"transparent";border.color:"#7a7358";border.width:1
                                     Rectangle{visible:index<root.lockInput.length;anchors.fill:parent;color:"#463f2e"}}}}
                             Item{width:1;height:6}
 
-                            // Erreur
                             Text{text:"AUTHENTIFICATION ÉCHOUÉE";font.family:"Share Tech Mono";font.pixelSize:8;font.letterSpacing:2;color:"#6e2a2a"
                                 anchors.horizontalCenter:parent.horizontalCenter
                                 opacity:root.lockError?1:0;height:14;Behavior on opacity{NumberAnimation{duration:200}}}
                             Item{width:1;height:10}
 
-                            // Bouton déverrouiller
                             Item{width:parent.width;height:42
                                 Rectangle{anchors.fill:parent;color:"transparent";border.color:"#463f2e";border.width:1}
                                 Rectangle{id:unlockFill;anchors.left:parent.left;anchors.top:parent.top;anchors.bottom:parent.bottom;color:"#463f2e";width:0
@@ -374,30 +386,29 @@ ShellRoot {
                 Timer{id:focusRetry;interval:50;repeat:true;property int cnt:0
                     onTriggered:{pwInput.forceActiveFocus();if(++cnt>=8){running=false;cnt=0}}}
 
-            // Rectangle noir de sécurité — couvre tout pendant les dernières frames
-            Rectangle {
-                anchors.fill: parent
-                color: "black"
-                z: 10
-                visible: root.done
+                Rectangle {
+                    anchors.fill: parent
+                    color: "black"
+                    z: 10
+                    visible: root.done
+                }
+
+                Timer {
+                    id: exitTimer; interval: 50; repeat: false
+                    onTriggered: Qt.quit()
+                }
             }
 
-            Timer {
-                id: exitTimer; interval: 50; repeat: false
-                onTriggered: Qt.quit()
-            }
-
-
-            }
-
-            // Déclencher animations selon état
             Connections {
                 target: root
                 function onFrozenChanged() {
+                    if (root.fastMode && root.frozen) {
+                        panelOpenTimer.restart()
+                    }
                 }
                 function onHidingChanged() {
                     if (root.hiding) {
-                        reveal.stop()   // stopper reveal définitivement
+                        reveal.stop()
                         panelHide.start()
                         hide.position = 0
                         hide.play()
@@ -406,7 +417,7 @@ ShellRoot {
                 }
                 function onRevealingChanged() {
                     if (root.revealing) {
-                        root.frozen = true  // activer le focus dès maintenant
+                        root.frozen = true
                         reveal.position = 0
                         reveal.play()
                         panelOpenTimer.restart()
@@ -417,13 +428,28 @@ ShellRoot {
                 }
             }
 
-            Timer{id:panelOpenTimer;interval:100;repeat:false;onTriggered:panelReveal.start()}
-
-
+            Timer {
+                id: panelOpenTimer
+                interval: 100
+                repeat: false
+                onTriggered: {
+                    if (root.fastMode) {
+                        wipeScale.yScale = 0
+                        if (isPrimary) {
+                            pwInput.forceActiveFocus()
+                            focusRetry.restart()
+                        }
+                    } else {
+                        panelReveal.start()
+                    }
+                }
+            }
 
             Component.onCompleted: {
-                reveal.position = 0
-                reveal.play()
+                if (!root.fastMode) {
+                    reveal.position = 0
+                    reveal.play()
+                }
             }
         }
     }

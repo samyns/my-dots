@@ -23,10 +23,12 @@ LOG_FILE="$LOG_DIR/wave-check.log"
 # Fichiers attendus (noms utilisés par lockscreen.qml et WallpaperPicker.qml)
 REVEAL_VIDEO="$VIDEOS_DIR/wave_reveal.mp4"
 HIDE_VIDEO="$VIDEOS_DIR/wave_hide.mp4"
+LAST_FRAME="$VIDEOS_DIR/wave_last_frame.png"
 
 # Scripts générateurs
 REVEAL_SCRIPT="$QS_DIR/pixel_wave.py"
 HIDE_SCRIPT="$QS_DIR/pixel-wave-close-video.py"
+LAST_FRAME_SCRIPT="$QS_DIR/ext_last_fr.py"
 
 # ── Préparation ──
 mkdir -p "$VIDEOS_DIR" "$LOG_DIR"
@@ -43,7 +45,7 @@ echo "════════════════════════�
 missing_scripts=()
 [[ -f "$REVEAL_SCRIPT" ]] || missing_scripts+=("$REVEAL_SCRIPT")
 [[ -f "$HIDE_SCRIPT"   ]] || missing_scripts+=("$HIDE_SCRIPT")
-
+[[ -f "$LAST_FRAME_SCRIPT" ]] || missing_scripts+=("$LAST_FRAME_SCRIPT")
 if (( ${#missing_scripts[@]} > 0 )); then
     echo "❌ Script(s) générateur(s) manquant(s) :"
     printf '   - %s\n' "${missing_scripts[@]}"
@@ -76,6 +78,19 @@ else
     else
         echo "❌ échec génération wave_hide.mp4"
         exit 3
+    fi
+fi
+
+if [[ -f "$LAST_FRAME" ]]; then
+    echo "✓ wave_last_frame.png présent"
+else
+    echo "⚠ wave_last_frame.png manquant — génération…"
+    python "$LAST_FRAME_SCRIPT" -o "$LAST_FRAME"
+    if [[ -f "$LAST_FRAME" ]]; then
+        echo "✓ wave_last_frame.png généré"
+    else
+        echo "❌ échec génération wave_last_frame.png"
+        exit 4
     fi
 fi
 
