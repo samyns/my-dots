@@ -13,19 +13,29 @@ BACKUP_DIR="$HOME/.config-backup-$(date +%Y%m%d-%H%M%S)"
 readonly BACKUP_DIR
 readonly CONFIG_HOME="${XDG_CONFIG_HOME:-$HOME/.config}"
 
-# Add support for --pinned flag
+# Add support for flags
 PINNED_MODE=false
+VM_GL_TWEAKS=false          # Mesa llvmpipe + libgl software for Quickshell/Kitty (VirtualBox et al.)
+BOOT_WALLPAPER_VM=false     # exec-once awww img → first wallpaper in ~/Pictures/wallpapers
+
+[[ "${UNIT3_VM:-}" == "1" || "${UNIT3_VM:-}" == "yes" ]] && VM_GL_TWEAKS=true
+
 for arg in "$@"; do
     case "$arg" in
         --pinned) PINNED_MODE=true ;;
         --latest) PINNED_MODE=false ;;
+        --vm)     VM_GL_TWEAKS=true ;;
         --help|-h)
             cat <<EOF
-Usage: install.sh [--pinned|--latest]
+Usage: install.sh [options]
 
   --latest   Install latest versions of all packages (default).
   --pinned   Install exact versions tested by the maintainer.
              Use this if --latest broke something on your system.
+  --vm       VirtualBox / weak GPU: patch Quickshell + Kitty to use software OpenGL
+             (llvmpipe), optional boot wallpaper. Or set env UNIT3_VM=1.
+
+  Also: UNIT3_VM=1 same effect as --vm for non-interactive installs.
 EOF
             exit 0
             ;;
@@ -95,6 +105,16 @@ collect_choices() {
     INSTALL_WALLPAPERS=true;  ask_yn "Install default wallpapers to ~/Pictures/wallpapers?" y || INSTALL_WALLPAPERS=false
     INSTALL_BASHRC=true;      ask_yn "Install Unit-3 .bashrc (welcome banner + NieR prompt)?" y || INSTALL_BASHRC=false
     ENABLE_SERVICES=true;     ask_yn "Enable system services (NetworkManager, pipewire)?" y || ENABLE_SERVICES=false
+
+    if $VM_GL_TWEAKS; then
+        log "VirtualBox / software-GL mode enabled (--vm or UNIT3_VM=1)."
+    elif ask_yn "VirtualBox or limited GPU? Apply software OpenGL for Quickshell + Kitty (fixes many VM crashes)" n; then
+        VM_GL_TWEAKS=true
+    fi
+    if $VM_GL_TWEAKS && $INSTALL_WALLPAPERS; then
+        BOOT_WALLPAPER_VM=false
+        ask_yn "Apply the first bundled wallpaper automatically at each Hyprland login (awww)?" y && BOOT_WALLPAPER_VM=true || true
+    fi
     echo
 }
 
@@ -232,6 +252,50 @@ EOF
     fi
 }
 
+# Patches after copying configs and having wallpapers if applicable (--vm): Quickshell/Kitty + awww first optional background
+apply_vm_software_gl_tweaks_deployed() {
+    $VM_GL_TWEAKS || return 0
+    local h="$CONFIG_HOME/hypr/hyprland.conf"
+    local ucs="$CONFIG_HOME/hypr/user.conf"
+
+    if [[ -f "$h" ]] && grep -qE '^exec-once = env QT_MEDIA_BACKEND=ffmpeg qs[[:space:]]*$' "$h" 2>/dev/null; then
+        cp -a "$h" "${h}.bak-vmgl-$(date +%Y%m%d%H%M%S)"
+        sed -i 's|^exec-once = env QT_MEDIA_BACKEND=ffmpeg qs$|exec-once = env LIBGL_ALWAYS_SOFTWARE=1 GALLIUM_DRIVER=llvmpipe QT_MEDIA_BACKEND=ffmpeg QT_QPA_PLATFORM=wayland QT_WAYLAND_DISABLE_WINDOWDECORATION=1 /usr/bin/qs|' "$h"
+        ok "Patched hyprland.conf: Quickshell exec-once uses software OpenGL (llvmpipe)."
+    else
+        warn "Could not find default Quickshell exec-once line in hyprland.conf — skip auto-patch (edit manually if needed)."
+    fi
+
+    local mark="# unit3-install-vm-gl"
+    if [[ -f "$ucs" ]] && ! grep -qF "$mark" "$ucs" 2>/dev/null; then
+        cat >>"$ucs" <<'VMGL'
+
+# unit3-install-vm-gl — Kitty + software GL (VirtualBox / GPU limitada; Quickshell ya va en hyprland.conf)
+unbind = SUPER, T
+bind = SUPER, T, exec, env LIBGL_ALWAYS_SOFTWARE=1 GALLIUM_DRIVER=llvmpipe KITTY_GPU_DISABLED=1 /usr/bin/kitty
+VMGL
+        ok "Appended Kitty software-GL binds to user.conf."
+    fi
+
+    $BOOT_WALLPAPER_VM || return 0
+    local first
+    first="$(find "$HOME/Pictures/wallpapers" -maxdepth 1 -type f \( -iname '*.jpg' -o -iname '*.jpeg' -o -iname '*.png' -o -iname '*.webp' \) 2>/dev/null | sort | head -n1)"
+    if [[ -z "$first" ]]; then
+        warn "No images in ~/Pictures/wallpapers — skipping boot wallpaper exec-once."
+        return 0
+    fi
+    local wb="# unit3-install-boot-wallpaper"
+    if [[ -f "$ucs" ]] && grep -qF "$wb" "$ucs" 2>/dev/null; then
+        return 0
+    fi
+    cat >>"$ucs" <<EOF
+
+${wb}
+exec-once = sleep 4 && awww img ${first}
+EOF
+    ok "Added exec-once to apply wallpaper at login: ${first}"
+}
+
 # ─── System files (PAM, etc.) ───────────────────────────────────────
 deploy_system_files() {
     local pam_src="$CLONE_DIR/config/system/pam.d"
@@ -311,7 +375,11 @@ finalize() {
     echo
     echo "  ${C_BOLD}Next steps:${C_RESET}"
     echo "    1. Reboot or log out, then log back into Hyprland."
-    echo "    2. Customise via ~/.config/hypr/user.conf — never edit hyprland.conf directly."
+    if $VM_GL_TWEAKS; then
+        echo "    - VirtualBox/software-GL: from TTY login, prefer: exec start-hyprland"
+        echo "      (bare Hyprland prints a warning; start-hyprland sets session properly)."
+    fi
+    echo "    2. Customise via ~/.config/hypr/user.conf — never edit hyprland.conf directly unless you know why."
     echo "    3. Bashrc personal overrides go in ~/.bashrc.local"
     echo "    4. Wallpapers go in ~/Pictures/wallpapers/ (use SUPER+P to pick one)."
     if [[ -d "$BACKUP_DIR" ]]; then
@@ -336,6 +404,7 @@ main() {
     deploy_system_files
     deploy_shell_config
     setup_user_dirs
+    apply_vm_software_gl_tweaks_deployed
     enable_services
     finalize
 }

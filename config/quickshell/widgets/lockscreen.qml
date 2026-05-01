@@ -361,7 +361,7 @@ ShellRoot {
                                 Rectangle{anchors.fill:parent;color:"transparent";border.color:"#463f2e";border.width:1}
                                 Rectangle{id:unlockFill;anchors.left:parent.left;anchors.top:parent.top;anchors.bottom:parent.bottom;color:"#463f2e";width:0
                                     Behavior on width{NumberAnimation{duration:280;easing.type:Easing.InOutQuart}}}
-                                Text{anchors.centerIn:parent;text:"DÉVERROUILLER";font.family:"Share Tech Mono";font.pixelSize:10;font.letterSpacing:3
+                                Text{anchors.centerIn:parent;text:"Login";font.family:"Share Tech Mono";font.pixelSize:10;font.letterSpacing:3
                                     color:unlockMA.containsMouse?"#d6cfb5":"#463f2e";Behavior on color{ColorAnimation{duration:200}}}
                                 MouseArea{id:unlockMA;anchors.fill:parent;hoverEnabled:true
                                     onEntered:unlockFill.width=parent.width;onExited:unlockFill.width=0
