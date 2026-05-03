@@ -87,30 +87,40 @@ ShellRoot {
                     var n = wifiNetworks[i]
                     var prefix = n.active ? "✓ " : "  "
                     var sigBars = n.signal >= 75 ? "▰▰▰" : n.signal >= 50 ? "▰▰▱" : n.signal >= 25 ? "▰▱▱" : "▱▱▱"
+                    var lock = (n.security && n.security !== "" && n.security !== "--") ? " ⚿" : "  "
                     acts.push({
                         key: "connect:" + n.ssid,
-                        label: prefix + n.ssid + "  " + sigBars
+                        label: prefix + n.ssid + "  " + sigBars + lock
                     })
                 }
             }
             return acts
         }
-        // Bluetooth : toggle + un bouton par device paired
+        // Bluetooth : toggle + scan + un bouton par device avec actions adaptées
         if (key === "top.bluetooth") {
             var acts2 = [{key:"toggle", label: btEnabled ? "Disable Bluetooth" : "Enable Bluetooth"}]
             if (btEnabled) {
+                acts2.push({key: "scan", label: btScanning ? "◉ Scanning… (tap to stop)" : "⌕ Scan for new devices"})
                 for (var j = 0; j < btDevices.length; j++) {
                     var d = btDevices[j]
-                    var label = (d.connected ? "✓ " : "  ") + d.name
-                    var aKey = (d.connected ? "disconnect:" : "connect:") + d.mac
+                    var prefix = d.connected ? "✓ " : (d.paired ? "· " : "+ ")
+                    var label = prefix + d.name
+                    var aKey
+                    if (d.connected)      aKey = "disconnect:" + d.mac
+                    else if (d.paired)    aKey = "connect:"    + d.mac
+                    else                  aKey = "pair:"       + d.mac
                     acts2.push({key: aKey, label: label})
+                    // Bouton remove pour les devices paired
+                    if (d.paired) {
+                        acts2.push({key: "remove:" + d.mac, label: "    × Remove " + d.name})
+                    }
                 }
             }
             return acts2
         }
         // Autres : actions statiques du dictionnaire details
-        var d = root.details[key]
-        return d ? d.actions : []
+        var dd = root.details[key]
+        return dd ? dd.actions : []
     }
 
     // ── h3/status dynamique pour Wi-Fi/BT ──
@@ -148,6 +158,8 @@ ShellRoot {
     property bool   wifiEnabled: false
     property string wifiCurrentSSID: ""
     property var    wifiNetworks: []   // [{ssid, signal, security, active}]
+    property string wifiPromptSSID: ""   // SSID en cours de saisie de mot de passe (vide = pas de prompt)
+    property string wifiError: ""        // message d'erreur après échec connexion
 
     Timer {
         interval: 3000; running: root.open && root.slot === "top"; repeat: true; triggeredOnStart: true
@@ -199,6 +211,8 @@ ShellRoot {
     // ── Données système : Bluetooth ──
     property bool   btEnabled: false
     property var    btDevices: []   // [{name, mac, connected, paired}]
+    property bool   btScanning: false
+    property string wifiPasswordInput: ""
 
     Timer {
         interval: 3000; running: root.open && root.slot === "top"; repeat: true; triggeredOnStart: true
@@ -206,14 +220,18 @@ ShellRoot {
     }
     Process {
         id: pollBt
-        // Récupère powered + liste des appareils paired (avec leur état connected)
+        // Récupère powered + liste de TOUS les devices (paired et découverts)
+        // avec leur état connected et paired pour différencier
         command: ["sh","-c",
             "echo \"$(bluetoothctl show 2>/dev/null | grep -i 'powered:' | awk '{print $2}')\"; " +
-            "bluetoothctl devices Paired 2>/dev/null | while read line; do " +
-            "  mac=$(echo $line | awk '{print $2}'); " +
-            "  name=$(echo $line | cut -d' ' -f3-); " +
-            "  conn=$(bluetoothctl info $mac 2>/dev/null | grep -i 'Connected:' | awk '{print $2}'); " +
-            "  echo \"$mac|$name|$conn\"; " +
+            "bluetoothctl devices 2>/dev/null | while read line; do " +
+            "  mac=$(echo \"$line\" | awk '{print $2}'); " +
+            "  name=$(echo \"$line\" | cut -d' ' -f3-); " +
+            "  info=$(bluetoothctl info \"$mac\" 2>/dev/null); " +
+            "  conn=$(echo \"$info\" | grep -i 'Connected:' | awk '{print $2}'); " +
+            "  paired=$(echo \"$info\" | grep -i 'Paired:' | awk '{print $2}'); " +
+            "  trusted=$(echo \"$info\" | grep -i 'Trusted:' | awk '{print $2}'); " +
+            "  echo \"$mac|$name|$conn|$paired|$trusted\"; " +
             "done"
         ]
         stdout: StdioCollector {
@@ -223,24 +241,68 @@ ShellRoot {
                 var seen = ({})
                 for (var i = 1; i < lines.length; i++) {
                     var parts = lines[i].split("|")
-                    if (parts.length < 3) continue
+                    if (parts.length < 4) continue
                     var mac = parts[0]
                     if (!mac || seen[mac]) continue
                     seen[mac] = {
                         mac: mac,
                         name: parts[1] || mac,
-                        connected: (parts[2] || "").trim() === "yes"
+                        connected: (parts[2] || "").trim() === "yes",
+                        paired:    (parts[3] || "").trim() === "yes",
+                        trusted:   (parts[4] || "").trim() === "yes"
                     }
                 }
                 var devices = []
                 for (var k in seen) devices.push(seen[k])
-                // Trier : connectés en premier, puis par nom
+                // Trier : connectés > paired > non-paired (découverts), puis nom
                 devices.sort(function(a,b){
-                    if (a.connected && !b.connected) return -1
-                    if (!a.connected && b.connected) return 1
+                    if (a.connected !== b.connected) return a.connected ? -1 : 1
+                    if (a.paired    !== b.paired)    return a.paired ? -1 : 1
                     return a.name.localeCompare(b.name)
                 })
                 root.btDevices = devices
+            }
+        }
+    }
+
+    // Process pour scan BT
+    Process {
+        id: btScanProc
+        command: ["sh","-c","bluetoothctl --timeout 30 scan on"]
+        running: false
+    }
+    // Stop scan automatique après 30s
+    Timer {
+        id: btScanStopTimer
+        interval: 30000
+        repeat: false
+        onTriggered: { root.btScanning = false }
+    }
+    // Re-poll plus fréquent quand on scan
+    Timer {
+        interval: 1500
+        running: root.btScanning && root.open
+        repeat: true
+        onTriggered: pollBt.running = true
+    }
+
+    // Process pour submission du password Wi-Fi (sépare actProc pour capture stderr)
+    Process {
+        id: wifiSubmitProc
+        command: ["sh","-c","true"]
+        running: false
+        stdout: StdioCollector {
+            onStreamFinished: {
+                var output = this.text.trim()
+                if (output.indexOf("successfully activated") >= 0 || output === "") {
+                    root.wifiPromptSSID = ""
+                    root.wifiPasswordInput = ""
+                    root.wifiError = ""
+                } else {
+                    // erreur, on reste sur le prompt
+                    root.wifiError = "Connection failed"
+                }
+                refreshTimer.restart()
             }
         }
     }
@@ -262,19 +324,65 @@ ShellRoot {
                 cmd = "nmcli radio wifi " + (wifiEnabled ? "off" : "on")
             } else if (actionKey.indexOf("connect:") === 0) {
                 var ssid = actionKey.substring(8)
-                cmd = "nmcli dev wifi connect '" + ssid + "' || nm-connection-editor &"
+                // Trouver le réseau dans la liste pour vérifier la sécurité
+                var net = null
+                for (var i = 0; i < wifiNetworks.length; i++) {
+                    if (wifiNetworks[i].ssid === ssid) { net = wifiNetworks[i]; break }
+                }
+                // Si déjà actif, déconnexion
+                if (net && net.active) {
+                    cmd = "nmcli con down id '" + ssid + "' 2>/dev/null || nmcli dev disconnect $(nmcli -t -f DEVICE,TYPE dev | grep wifi | head -1 | cut -d: -f1)"
+                }
+                // Si réseau ouvert, connexion directe
+                else if (net && (net.security === "" || net.security === "--")) {
+                    cmd = "nmcli dev wifi connect '" + ssid.replace(/'/g, "'\\''") + "'"
+                }
+                // Si réseau sécurisé : ouvrir le prompt
+                else {
+                    wifiPromptSSID = ssid
+                    wifiError = ""
+                    return
+                }
+            } else if (actionKey === "submit-password") {
+                // Soumission du mot de passe via le prompt
+                cmd = "nmcli dev wifi connect '" + wifiPromptSSID.replace(/'/g, "'\\''") +
+                      "' password '" + wifiPasswordInput.replace(/'/g, "'\\''") + "' 2>&1"
+                wifiSubmitProc.command = ["sh","-c", cmd]
+                wifiSubmitProc.running = true
+                return
+            } else if (actionKey === "cancel-prompt") {
+                wifiPromptSSID = ""
+                wifiPasswordInput = ""
+                wifiError = ""
+                return
             }
         }
         // ── Bluetooth ──
         else if (slotKey === "top" && subKey === "bluetooth") {
             if (actionKey === "toggle") {
                 cmd = "bluetoothctl power " + (btEnabled ? "off" : "on")
+            } else if (actionKey === "scan") {
+                btScanning = !btScanning
+                if (btScanning) {
+                    btScanProc.running = true
+                    btScanStopTimer.restart()
+                } else {
+                    actProc.command = ["sh","-c","bluetoothctl --timeout 1 scan off"]
+                    actProc.running = true
+                }
+                return
             } else if (actionKey.indexOf("connect:") === 0) {
                 var mac = actionKey.substring(8)
                 cmd = "bluetoothctl connect " + mac
             } else if (actionKey.indexOf("disconnect:") === 0) {
                 var mac2 = actionKey.substring(11)
                 cmd = "bluetoothctl disconnect " + mac2
+            } else if (actionKey.indexOf("pair:") === 0) {
+                var mac3 = actionKey.substring(5)
+                cmd = "bluetoothctl trust " + mac3 + " && bluetoothctl pair " + mac3
+            } else if (actionKey.indexOf("remove:") === 0) {
+                var mac4 = actionKey.substring(7)
+                cmd = "bluetoothctl remove " + mac4
             }
         }
 
@@ -971,6 +1079,118 @@ ShellRoot {
                                     isFocus: root.action === modelData.key
                                     enterDelay: 200 + Math.min(index, 5) * 60
                                     width: actCol.width
+                                }
+                            }
+                        }
+                    }
+                }
+
+                // ── Prompt mot de passe Wi-Fi (visible quand wifiPromptSSID est set) ──
+                Item {
+                    width: parent.width
+                    visible: sl.slotKey === "top" && root.sub === "wifi" && root.wifiPromptSSID !== ""
+                    height: visible ? 110 : 0
+
+                    Item { width: 1; height: 14 }
+
+                    Column {
+                        anchors.left: parent.left
+                        anchors.right: parent.right
+                        anchors.top: parent.top
+                        anchors.topMargin: 14
+                        spacing: 8
+
+                        Text {
+                            text: "PASSWORD · " + root.wifiPromptSSID
+                            font.family: "Inter"
+                            font.pixelSize: 10
+                            font.letterSpacing: 3
+                            font.weight: Font.Medium
+                            color: root.colInk
+                            opacity: 0.7
+                        }
+
+                        Rectangle {
+                            width: parent.width
+                            height: 32
+                            color: root.colCard
+                            border.color: root.colInk
+                            border.width: 1
+
+                            TextInput {
+                                id: pwInput
+                                anchors.fill: parent
+                                anchors.leftMargin: 10
+                                anchors.rightMargin: 10
+                                verticalAlignment: TextInput.AlignVCenter
+                                color: root.colInk
+                                font.family: "Inter"
+                                font.pixelSize: 13
+                                echoMode: TextInput.Password
+                                clip: true
+                                focus: root.wifiPromptSSID !== ""
+                                onTextChanged: root.wifiPasswordInput = text
+                                onAccepted: root.dispatchAction("top","wifi","submit-password")
+                                Keys.onEscapePressed: root.dispatchAction("top","wifi","cancel-prompt")
+                                // Reset à l'ouverture du prompt
+                                Connections {
+                                    target: root
+                                    function onWifiPromptSSIDChanged() {
+                                        if (root.wifiPromptSSID !== "") {
+                                            pwInput.text = ""
+                                            pwInput.forceActiveFocus()
+                                        }
+                                    }
+                                }
+                            }
+                        }
+
+                        // Erreur si applicable
+                        Text {
+                            visible: root.wifiError !== ""
+                            text: root.wifiError
+                            font.family: "Inter"
+                            font.pixelSize: 10
+                            color: "#a04030"
+                        }
+
+                        // Boutons Connect / Cancel
+                        Row {
+                            spacing: 8
+                            Rectangle {
+                                width: 110; height: 28
+                                color: root.colInk
+                                Text {
+                                    anchors.centerIn: parent
+                                    text: "CONNECT"
+                                    font.family: "Inter"
+                                    font.pixelSize: 10
+                                    font.letterSpacing: 2
+                                    font.weight: Font.Medium
+                                    color: root.colCard
+                                }
+                                MouseArea {
+                                    anchors.fill: parent
+                                    onClicked: root.dispatchAction("top","wifi","submit-password")
+                                }
+                            }
+                            Rectangle {
+                                width: 80; height: 28
+                                color: "transparent"
+                                border.color: root.colInk
+                                border.width: 1
+                                Text {
+                                    anchors.centerIn: parent
+                                    text: "CANCEL"
+                                    font.family: "Inter"
+                                    font.pixelSize: 10
+                                    font.letterSpacing: 2
+                                    font.weight: Font.Medium
+                                    color: root.colInk
+                                }
+                                MouseArea {
+                                    anchors.fill: parent
+                                    onClicked: root.dispatchAction("top","wifi","cancel-prompt")
                                 }
                             }
                         }
