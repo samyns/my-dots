@@ -29,6 +29,10 @@ playerctl
 # ─── Notifications + polkit ────────────────────────────
 polkit-kde-agent
 
+# Bluetooth
+
+kdeconnect
+
 # ─── Screenshots, brightness, clipboard ────────────────
 brightnessctl
 grim

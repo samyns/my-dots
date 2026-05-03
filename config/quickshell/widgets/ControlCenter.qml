@@ -448,7 +448,7 @@ ShellRoot {
     // Timer qui finalise la fermeture après que les slots soient revenus au centre
     Timer {
         id: closeTimer
-        interval: 600  // attendre la fin de l'animation des slots (560ms + marge)
+        interval: 290  // attendre la fin de l'animation des slots (250ms + marge)
         repeat: false
         onTriggered: {
             // Phase 2 : on cache vraiment (fade out via opacity 0 dans le panel)
@@ -632,7 +632,7 @@ ShellRoot {
                         anchors.verticalCenter: parent.verticalCenter
                         anchors.verticalCenterOffset: (root.open && !root.closing) ? -root.slotGapV : 0
                         Behavior on anchors.verticalCenterOffset {
-                            NumberAnimation { duration: 560; easing.type: Easing.OutCubic; }
+                            NumberAnimation { duration: 250; easing.type: Easing.InCirc; }
                         }
                     }
                     Slot {
@@ -643,7 +643,7 @@ ShellRoot {
                         anchors.verticalCenter: parent.verticalCenter
                         anchors.verticalCenterOffset: (root.open && !root.closing) ? root.slotGapV : 0
                         Behavior on anchors.verticalCenterOffset {
-                            NumberAnimation { duration: 560; easing.type: Easing.OutCubic; }
+                            NumberAnimation { duration: 250; easing.type: Easing.InCirc; }
                         }
                     }
                     Slot {
@@ -654,7 +654,7 @@ ShellRoot {
                         anchors.horizontalCenter: parent.horizontalCenter
                         anchors.horizontalCenterOffset: (root.open && !root.closing) ? -root.slotGapH : 0
                         Behavior on anchors.horizontalCenterOffset {
-                            NumberAnimation { duration: 560; easing.type: Easing.OutCubic; }
+                            NumberAnimation { duration: 250; easing.type: Easing.InCirc; }
                         }
                     }
                     Slot {
@@ -665,7 +665,7 @@ ShellRoot {
                         anchors.horizontalCenter: parent.horizontalCenter
                         anchors.horizontalCenterOffset: (root.open && !root.closing) ? root.slotGapH : 0
                         Behavior on anchors.horizontalCenterOffset {
-                            NumberAnimation { duration: 560; easing.type: Easing.OutCubic; }
+                            NumberAnimation { duration: 250; easing.type: Easing.InCirc; }
                         }
                     }
                 }
