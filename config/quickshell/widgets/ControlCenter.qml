@@ -1442,7 +1442,11 @@ ShellRoot {
             anchors.leftMargin: 30
             anchors.rightMargin: 30
             anchors.verticalCenter: parent.verticalCenter
-
+            anchors.verticalCenterOffset: {
+                if (sl.slotKey === "top")    return -200
+                if (sl.slotKey === "bottom") return  100
+                return 0
+            }
             width: 300
             height: detailsCol.implicitHeight + 36
 
