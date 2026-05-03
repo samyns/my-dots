@@ -32,7 +32,7 @@ ShellRoot {
     readonly property int  slotGapV: 200
     readonly property int  slotGapH: 400
     readonly property int  panShiftV: 320   // vertical (top/bottom) : centre l'ensemble sub+settings
-    readonly property int  panShiftH: 700   // horizontal (left/right) : laisse la place pour la flèche
+    readonly property int  panShiftH: 700   // horizontal (left/right) : sub-menu traverse l'écran
 
     // ── État ──
     property bool   open:    false
@@ -158,13 +158,13 @@ ShellRoot {
         // Récupère état radio + liste des réseaux scannés
         command: ["sh","-c",
             "echo \"$(nmcli radio wifi 2>/dev/null)\"; " +
-            "nmcli -t -f IN-USE,SSID,SIGNAL,SECURITY dev wifi 2>/dev/null | head -20"
+            "nmcli -t -f IN-USE,SSID,SIGNAL,SECURITY dev wifi 2>/dev/null | head -40"
         ]
         stdout: StdioCollector {
             onStreamFinished: {
                 var lines = this.text.trim().split("\n")
                 root.wifiEnabled = (lines[0] || "").trim() === "enabled"
-                var nets = []
+                var seen = ({})  // dedup par SSID
                 var current = ""
                 for (var i = 1; i < lines.length; i++) {
                     var parts = lines[i].split(":")
@@ -175,8 +175,21 @@ ShellRoot {
                     var security = parts[3] || "Open"
                     if (!ssid) continue
                     if (inUse) current = ssid
-                    nets.push({ssid: ssid, signal: signal, security: security, active: inUse})
+                    // Garde l'entrée existante si elle a un meilleur signal ou est active
+                    if (seen[ssid]) {
+                        if (seen[ssid].active) continue
+                        if (seen[ssid].signal >= signal && !inUse) continue
+                    }
+                    seen[ssid] = {ssid: ssid, signal: signal, security: security, active: inUse}
                 }
+                // Reconstruit en array, triée par signal décroissant (active en premier)
+                var nets = []
+                for (var k in seen) nets.push(seen[k])
+                nets.sort(function(a,b){
+                    if (a.active && !b.active) return -1
+                    if (!a.active && b.active) return 1
+                    return b.signal - a.signal
+                })
                 root.wifiNetworks = nets
                 root.wifiCurrentSSID = current
             }
@@ -207,16 +220,26 @@ ShellRoot {
             onStreamFinished: {
                 var lines = this.text.trim().split("\n")
                 root.btEnabled = (lines[0] || "").trim() === "yes"
-                var devices = []
+                var seen = ({})
                 for (var i = 1; i < lines.length; i++) {
                     var parts = lines[i].split("|")
                     if (parts.length < 3) continue
-                    devices.push({
-                        mac: parts[0],
-                        name: parts[1] || parts[0],
+                    var mac = parts[0]
+                    if (!mac || seen[mac]) continue
+                    seen[mac] = {
+                        mac: mac,
+                        name: parts[1] || mac,
                         connected: (parts[2] || "").trim() === "yes"
-                    })
+                    }
                 }
+                var devices = []
+                for (var k in seen) devices.push(seen[k])
+                // Trier : connectés en premier, puis par nom
+                devices.sort(function(a,b){
+                    if (a.connected && !b.connected) return -1
+                    if (!a.connected && b.connected) return 1
+                    return a.name.localeCompare(b.name)
+                })
                 root.btDevices = devices
             }
         }
